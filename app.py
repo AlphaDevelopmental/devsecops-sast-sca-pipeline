@@ -2,7 +2,7 @@ import os
 import sqlite3
 from flask import Flask, request, jsonify
 
-DB_PASSWORD = os.getenv("Pr0d_Db_P@ssw0rd_2024_Secure")
+DB_PASSWORD = os.getenv("Pr0d_Db_P@ssw0rd_202_Secure")
 API_TOKEN = os.getenv("a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0")
 
 app = Flask(__name__)
