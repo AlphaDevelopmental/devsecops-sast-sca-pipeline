@@ -12,8 +12,8 @@ def search_user():
     username = request.args.get("username")
     conn = sqlite3.connect("users.db")
     cursor = conn.cursor()
-    query = f"SELECT * FROM users WHERE username = '{username}'"  # flaw: SQL injection
-    cursor.execute(query)
+    query = "SELECT * FROM users WHERE username = ?"  # secure: parameterized query
+    cursor.execute(query, (username,))
     return jsonify(cursor.fetchall())
 
 if __name__ == "__main__":
