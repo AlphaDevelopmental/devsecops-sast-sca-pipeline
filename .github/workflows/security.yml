@@ -63,9 +63,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-
       - name: Build Docker image
-        run: docker build -t devsecops-project1:${{ github.sha }} .
+        run: docker build --no-cache -t devsecops-project1:${{ github.sha }} .
       - name: Run Trivy Image Scanner
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
