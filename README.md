@@ -13,7 +13,7 @@ Each control is demonstrated as a functioning gate: a deliberately vulnerable Fl
 | **Secrets detection** | Gitleaks |
 | **SAST** | Semgrep (`p/security-audit`, `p/owasp-top-ten`) |
 | **SCA** | Trivy (filesystem scan, pip) |
-| **Author** | Taiwo Micheal Glass — AlphaDevelopmental Technologies |
+| **Author** | Taiwo Micheal — AlphaDevelopmental Technologies |
 | **Links** | [github.com/AlphaDevelopmental](https://github.com/AlphaDevelopmental) · [alphadevelopmental.github.io](https://alphadevelopmental.github.io) |
 
 ---
