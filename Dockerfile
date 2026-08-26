@@ -7,6 +7,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
+RUN rm -rf /usr/local/lib/python3.10/ensurepip/_bundled
 
 COPY app.py .
 
