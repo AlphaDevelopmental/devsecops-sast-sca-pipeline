@@ -1,0 +1,4 @@
+# setuptools bundles its own internal copy of wheel — not independently
+# upgradable via pip. Not exploitable in this context: dormant packaging
+# code, never invoked by the application. Accepted risk, reviewed 2026-08-26.
+CVE-2026-24049
