@@ -2,9 +2,9 @@
 
 [![Pipeline Status](https://github.com/AlphaDevelopmental/devsecops-sast-sca-pipeline/actions/workflows/security.yml/badge.svg)](https://github.com/AlphaDevelopmental/devsecops-sast-sca-pipeline/actions)
 
-A CI/CD security gate implementing Shift-Left Security on GitHub Actions. Enforces three automated, blocking security controls — Secrets Detection, Static Application Security Testing (SAST), and Software Composition Analysis (SCA) — on every push, with parallel job execution, least-privilege token permissions, and SHA-pinned Actions to mitigate supply-chain risk.
+A CI/CD security gate implementing Shift-Left Security on GitHub Actions. Enforces four automated, blocking security controls — Secrets Detection, Static Application Security Testing (SAST), Software Composition Analysis (SCA), and Container Image Scanning — on every push, with parallel job execution, least-privilege token permissions, and SHA-pinned Actions to mitigate supply-chain risk.
 
-Each control is demonstrated as a functioning gate: a deliberately vulnerable Flask application is scanned, the pipeline fails on real findings (CVE-2023-30861, CWE-89 SQL Injection, exposed credential), the code is remediated, and the same pipeline passes clean — with the full run history preserved as evidence.
+Each control is demonstrated as a functioning gate: a deliberately vulnerable Flask application is scanned, the pipeline fails on real findings (CVE-2023-30861, CWE-89 SQL Injection, exposed credential, container-level CVEs), the code is remediated, and the same pipeline passes clean — with the full run history preserved as evidence.
 
 | | |
 |---|---|
@@ -13,7 +13,8 @@ Each control is demonstrated as a functioning gate: a deliberately vulnerable Fl
 | **Secrets detection** | Gitleaks |
 | **SAST** | Semgrep (`p/security-audit`, `p/owasp-top-ten`) |
 | **SCA** | Trivy (filesystem scan, pip) |
-| **Author** | Taiwo Micheal — AlphaDevelopmental Technologies |
+| **Container scanning** | Trivy (image scan, `python:3.10-slim`) |
+| **Author** | Taiwo Micheal Glass — AlphaDevelopmental Technologies |
 | **Links** | [github.com/AlphaDevelopmental](https://github.com/AlphaDevelopmental) · [alphadevelopmental.github.io](https://alphadevelopmental.github.io) |
 
 ---
@@ -27,6 +28,7 @@ Each control is demonstrated as a functioning gate: a deliberately vulnerable Fl
 - **Least privilege** — `permissions: contents: read` at workflow level; no job is granted write access it doesn't need.
 - **Supply-chain integrity** — every third-party Action is pinned to a full 40-character commit SHA, not a mutable version tag, preventing silent upstream compromise.
 - **Hard gates, not reports** — every scanner runs with a blocking exit code (`--error`, `exit-code: 1`). A finding above threshold fails the build; nothing merges silently.
+- **Documented risk acceptance, not silent suppression** — findings with no available fix (e.g. vendored transitive dependencies) are explicitly listed in `.trivyignore` with a dated justification, not quietly ignored.
 
 ### Pipeline flow
 
@@ -55,6 +57,14 @@ Each control is demonstrated as a functioning gate: a deliberately vulnerable Fl
                   └───────────┬──────────────┘
                               ▼
                   ┌───────────────────────┐
+                  │  container-scan        │
+                  │  docker build           │
+                  │  Trivy (image scan)     │
+                  │  severity: HIGH,        │
+                  │  CRITICAL                │
+                  └────────────┬────────────┘
+                              ▼
+                  ┌───────────────────────┐
                   │  All gates pass?       │
                   ├── NO  ──► Build fails, │
                   │           merge blocked│
@@ -69,6 +79,7 @@ Each control is demonstrated as a functioning gate: a deliberately vulnerable Fl
 | `secrets-scan` | — | — | Yes |
 | `sast-scan` | `secrets-scan` | `sca-scan` | Yes |
 | `sca-scan` | `secrets-scan` | `sast-scan` | Yes |
+| `container-scan` | `secrets-scan`, `sast-scan`, `sca-scan` | — | Yes |
 
 ---
 
@@ -111,9 +122,24 @@ Each control below was verified against a genuine, seeded vulnerability — not 
 | **Remediation** | Upgraded to `flask==2.3.2` (patched release) |
 | **Evidence** | Run #10 (red) → Run #11 (green) |
 
+### 4. Container Image Scanning — Trivy
+
+| | |
+|---|---|
+| **Target** | Docker image built from `Dockerfile` (`python:3.10-slim` base) |
+| **Findings** | OS-level Debian CVEs (mostly unfixed/`fix_deferred`, excluded via `ignore-unfixed`); Python tooling CVEs in `setuptools`, `wheel`, `msgpack`, `urllib3` |
+| **Root cause** | Base image OS packages and bundled Python tooling age independently of `requirements.txt`, just like any other dependency |
+| **Remediation** | `apt-get upgrade` at build time; explicit pinning of `setuptools`, `wheel`, `msgpack`, `urllib3`, `jaraco.context` in `requirements.txt`; removed unused `ensurepip` bundled wheels; container runs as a non-root user (`appuser`) |
+| **Residual risk — documented, not silently ignored** | `setuptools` vendors its own internal copies of `wheel`, `jaraco.context`, and other packages inside `setuptools/_vendor/`. These are not independently upgradable via `pip` — only a new `setuptools` release changes them, and they are never executed directly by the application. Four such CVEs are explicitly accepted via `.trivyignore`, each with a dated justification comment, rather than left as a permanently failing, unactionable gate. |
+| **Evidence** | Run #16 (red — Dockerfile added, base image + tooling CVEs) → iterative remediation (runs #17–#27) → Run #28 (green) |
+
 ### Ruleset iteration note
 
 The initial Semgrep run used the lightweight `p/ci` ruleset, which did **not** catch the seeded SQL injection — it only flagged unrelated findings (mutable Action tags, Flask host binding). Switching to `p/security-audit` + `p/owasp-top-ten` (225 rules vs. 32) surfaced the actual SQLi. This is documented deliberately: no single ruleset is exhaustive, and ruleset selection is itself a security decision.
+
+### Vendored-dependency note
+
+Container scanning surfaced a subtler class of finding: CVEs in packages that `setuptools` bundles internally for its own use (`setuptools/_vendor/`), which are structurally impossible to patch via `pip install` or version pinning — only an upstream `setuptools` release changes them. Rather than leave the pipeline permanently red over an unactionable finding, these were reviewed individually, confirmed as dormant/non-executed code paths, and formally accepted via `.trivyignore` with dated justification comments. This mirrors real-world practice: not every finding has a fix, and a mature pipeline distinguishes between "unfixed" and "accepted-and-documented."
 
 ---
 
@@ -126,16 +152,19 @@ The initial Semgrep run used the lightweight `p/ci` ruleset, which did **not** c
 | Hardcoded credentials committed to source or history | Gitleaks, full-history scan | `secrets-scan` |
 | Insecure code patterns (SQL injection, unsafe host binding) | Semgrep, security-audit + OWASP Top 10 rulesets | `sast-scan` |
 | Known-vulnerable third-party dependencies | Trivy, pip manifest scan against NVD-backed DB | `sca-scan` |
+| Known-vulnerable OS packages and Python tooling in the deployed container | Trivy, image scan against `python:3.10-slim` build | `container-scan` |
+| Containers running as root | Non-root `USER appuser` in `Dockerfile` | Build stage |
 | CI/CD supply-chain compromise via mutable Action references | SHA-pinned Actions | All jobs |
 | Broad/unnecessary workflow permissions | `permissions: contents: read` | Workflow level |
 
 ### Out of scope — explicit limitations
 
 - **No DAST (Dynamic Application Security Testing)** — the application is never run and probed live; only static analysis and dependency scanning are performed. Runtime-only issues (auth bypass under load, business-logic flaws) are not covered.
-- **No container/image scanning** — this pipeline scans the filesystem (`fs` mode), not a built Docker image. A future iteration should add `trivy image` scanning if containerization is introduced.
 - **No infrastructure-as-code scanning** — no Terraform/IaC exists in this project yet; tools like `tfsec`/`checkov` would be needed if that's added.
 - **Ruleset coverage is not exhaustive** — Semgrep's community rulesets catch common, well-known patterns; a determined attacker using unusual code constructs could evade static pattern matching. SAST is a gate, not a guarantee.
 - **Trivy's DB reflects known CVEs at scan time** — a zero-day or freshly disclosed vulnerability in a dependency won't be caught until the DB updates.
+- **Unfixed OS-level CVEs are excluded from the gate, not resolved** — `ignore-unfixed: true` prevents the pipeline from blocking forever on Debian packages with no available patch. These findings are still visible in Trivy's output, just non-blocking.
+- **Vendored transitive dependencies are a known blind spot for pip-based pinning** — packages like `setuptools` bundle internal copies of other libraries that `pip install` cannot independently upgrade. These are handled via documented risk acceptance (`.trivyignore`), not left unaddressed. Reviewed 2026-08-26.
 - **No secrets rotation** — Gitleaks detects committed secrets; it does not rotate or revoke a credential once found. That remains a manual/operational step.
 - **Single-branch pipeline** — currently triggers on `master` only; no branch protection rules or required-status-check enforcement configured yet at the repository settings level.
 
@@ -174,6 +203,10 @@ semgrep scan --config p/security-audit --config p/owasp-top-ten --error
 
 # SCA
 trivy fs . --severity HIGH,CRITICAL --exit-code 1
+
+# Container image scan
+docker build -t devsecops-project1:local .
+trivy image devsecops-project1:local --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1
 ```
 
 ### Triggering the CI pipeline
@@ -199,6 +232,7 @@ Screenshots of each gate's red (failing) → green (passing) transition are stor
 | Secrets Detection | Run #2 — `generic-api-key` detected | Run #3 — No leaks detected |
 | SAST | Run #7 — 2 blocking SQLi findings | Run #8 — Clean scan |
 | SCA | Run #10 — CVE-2023-30861 (HIGH) | Run #11 — Clean scan |
+| Container Image Scanning | Run #16 — base image + tooling CVEs | Run #28 — Clean scan (all 4 jobs green) |
 
 Full run history: [Actions tab](https://github.com/AlphaDevelopmental/devsecops-sast-sca-pipeline/actions)
 
