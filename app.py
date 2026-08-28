@@ -3,7 +3,8 @@ import sqlite3
 from flask import Flask, request, jsonify
 
 DB_PASSWORD = os.getenv("DB_PASSWORD")
-API_TOKEN = os.getenv("API_TOKEN")
+API_TOKEN = os.getenv("API_TOKEN") # This is a placeholder for the GitHub Personal Access Token
+
 
 app = Flask(__name__)
 
