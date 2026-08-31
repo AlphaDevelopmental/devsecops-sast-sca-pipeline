@@ -122,7 +122,18 @@ Each control below was verified against a genuine, seeded vulnerability — not 
 | **Remediation** | Upgraded to `flask==2.3.2` (patched release) |
 | **Evidence** | Run #10 (red) → Run #11 (green) |
 
-### 4. Container Image Scanning — Trivy
+### 4. Secrets Externalization Anti-Pattern — Manual Review
+
+| | |
+|---|---|
+| **Finding** | `DB_PASSWORD` and `API_TOKEN` were "externalized" via `os.getenv("Pr0d_Db_P@ssw0rd_2024_Secure")` — but the literal secret value was used as the **environment variable name**, not a real variable name. The code looked externalized on casual inspection but was functionally broken (the lookup could never succeed) and still exposed the real secret value in source. |
+| **Detected by** | Manual code review (not caught by Gitleaks, Semgrep, or Trivy — the value wasn't in a position any of these tools pattern-match against) |
+| **Risk** | False sense of security — a superficial glance suggests secrets are externalized when they are not; the plaintext credential remains fully readable in source |
+| **Remediation** | Corrected to `os.getenv("DB_PASSWORD")` and `os.getenv("API_TOKEN")` — proper variable names, with real values supplied via a gitignored `.env` locally and CI/production secrets elsewhere |
+| **Incident during fix** | The `.env` file containing real values was briefly and accidentally committed alongside this fix. Caught before further exposure; remediated by `git rm --cached .env` and confirming `.gitignore` coverage |
+| **Evidence** | Runs #30–#31 (fix applied) → Run #32 (`.env` untracked and leak prevented) |
+
+### 5. Container Image Scanning — Trivy
 
 | | |
 |---|---|
@@ -136,6 +147,10 @@ Each control below was verified against a genuine, seeded vulnerability — not 
 ### Ruleset iteration note
 
 The initial Semgrep run used the lightweight `p/ci` ruleset, which did **not** catch the seeded SQL injection — it only flagged unrelated findings (mutable Action tags, Flask host binding). Switching to `p/security-audit` + `p/owasp-top-ten` (225 rules vs. 32) surfaced the actual SQLi. This is documented deliberately: no single ruleset is exhaustive, and ruleset selection is itself a security decision.
+
+### Secrets anti-pattern note
+
+Not every "secrets externalization" fix is a real fix — a scanner-evasion pattern where the secret's literal value is used as the environment variable *name* (`os.getenv("<the actual secret>")`) reads as externalized on casual review but is functionally broken and still leaks the value. No automated tool in this pipeline caught it; it surfaced only through manual review. This is documented because it's a real, easy-to-make mistake, not a hypothetical.
 
 ### Vendored-dependency note
 
@@ -233,6 +248,7 @@ Screenshots of each gate's red (failing) → green (passing) transition are stor
 | SAST | Run #7 — 2 blocking SQLi findings | Run #8 — Clean scan |
 | SCA | Run #10 — CVE-2023-30861 (HIGH) | Run #11 — Clean scan |
 | Container Image Scanning | Run #16 — base image + tooling CVEs | Run #28 — Clean scan (all 4 jobs green) |
+| Secrets Externalization Anti-Pattern | Runs #30–#31 — literal secret used as env var name | Run #32 — proper `DB_PASSWORD`/`API_TOKEN` names; `.env` untracked |
 
 Full run history: [Actions tab](https://github.com/AlphaDevelopmental/devsecops-sast-sca-pipeline/actions)
 
