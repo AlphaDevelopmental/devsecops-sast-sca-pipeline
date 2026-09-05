@@ -1,5 +1,5 @@
 # DevSecOps Security Gate Pipeline
-
+> See [PROJECT_BRIEF.md](./PROJECT_BRIEF.md) for the original goals and what I learned building this.
 [![Pipeline Status](https://github.com/AlphaDevelopmental/devsecops-sast-sca-pipeline/actions/workflows/security.yml/badge.svg)](https://github.com/AlphaDevelopmental/devsecops-sast-sca-pipeline/actions)
 
 A CI/CD security gate implementing Shift-Left Security on GitHub Actions. Enforces four automated, blocking security controls — Secrets Detection, Static Application Security Testing (SAST), Software Composition Analysis (SCA), and Container Image Scanning — on every push, with parallel job execution, least-privilege token permissions, and SHA-pinned Actions to mitigate supply-chain risk.
